@@ -1,11 +1,12 @@
 "use client";
-import { useSession, signOut, signIn } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import DropZone from "./DropZone";
-import { FileSearch, Loader2, Trash2, Edit, Mail } from "lucide-react";
+import { FileSearch, FileText, Loader2, Trash2, Mail, Edit } from "lucide-react";
 import { useToast } from "./ToastProvider";
 import JsonDisplay from "./JsonDisplay";
 import Link from "next/link";
+import EditDrawer, { EditableItem } from "./EditDrawer";
 
 export default function Main() {
     const { data: session, status } = useSession();
@@ -14,22 +15,29 @@ export default function Main() {
     const [result, setResult] = useState<Record<string, unknown> | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const { toast } = useToast();
-    const [history, setHistory] = useState<any[]>([]);
+    const [history, setHistory] = useState<EditableItem[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
+    const [editItem, setEditItem] = useState<EditableItem | null>(null);
+
+    const fetchHistory = useCallback(async () => {
+        setLoadingHistory(true);
+        try {
+            const res = await fetch("/api/save-scanned-data");
+            const data = await res.json();
+            if (data.success) setHistory(data.data);
+        } catch {
+            setHistory([]);
+        } finally {
+            setLoadingHistory(false);
+        }
+    }, []);
 
     useEffect(() => {
         if (status === "authenticated") {
-            setLoadingHistory(true);
-            fetch("/api/save-scanned-data")
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) setHistory(data.data);
-                })
-                .catch(() => setHistory([]))
-                .finally(() => setLoadingHistory(false));
+            fetchHistory();
         }
-    }, [status]);
+    }, [status, fetchHistory]);
 
     const handleFileSelect = useCallback((f: File) => {
         setFile(f);
@@ -52,15 +60,11 @@ export default function Main() {
 
         try {
             const base64 = preview.split(",")[1];
-            const resp = await fetch(`/api/analyze-document`,
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
-                }
-            );
+            const resp = await fetch(`/api/analyze-document`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
+            });
 
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
@@ -68,7 +72,6 @@ export default function Main() {
             }
 
             const data = await resp.json();
-            console.log("Analysis result:", data);
             setResult(data);
         } catch (e) {
             toast({
@@ -100,11 +103,8 @@ export default function Main() {
         }
     };
 
-    const handleEdit = (item: any) => {
-        // load item into Output for quick edit/view
-        setResult(item);
-        window.scrollTo({ top: 0, behavior: "smooth" });
-        toast({ title: "Loaded", description: "Record loaded into Output for editing." });
+    const handleEditSaved = (updated: EditableItem) => {
+        setHistory(h => h.map(it => it._id === updated._id ? updated : it));
     };
 
     const handleSendEmail = async (id: string) => {
@@ -128,22 +128,32 @@ export default function Main() {
     };
 
     if (status === "loading") {
-        return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950">
+                <Loader2 className="w-6 h-6 animate-spin text-zinc-400" />
+            </div>
+        );
     }
+
     if (!session) {
         return (
-            <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-                <div className="bg-white dark:bg-zinc-900 shadow-lg p-8 flex flex-col items-center gap-4 w-full max-w-md">
-                    <h2 className="text-2xl font-semibold mb-0 text-black dark:text-zinc-50">Welcome to Smart Scanner</h2>
-                    <p className="text-sm mb-4 text-zinc-600 dark:text-zinc-300">Sign in to access your dashboard and features.</p>
-                            <div className="w-full flex gap-3">
-                                <Link
-                                    href="/signin"
-                                    className="flex-1 py-2.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center justify-center gap-2 text-center"
-                                >
-                                    Sign In
-                                </Link>
-                            </div>
+            <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-black">
+                <div className="bg-white dark:bg-zinc-900 shadow-lg p-8 rounded-lg flex flex-col items-center gap-4 w-full max-w-sm">
+                    <div className="w-10 h-10 rounded-md bg-blue-600/10 flex items-center justify-center">
+                        <FileSearch className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="text-center">
+                        <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Smart Scanner</h2>
+                        <p className="text-sm mt-1 text-zinc-500 dark:text-zinc-400">
+                            Sign in to scan and extract data from documents.
+                        </p>
+                    </div>
+                    <Link
+                        href="/signin"
+                        className="w-full py-2.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center justify-center"
+                    >
+                        Sign In
+                    </Link>
                 </div>
             </div>
         );
@@ -153,8 +163,8 @@ export default function Main() {
         <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 font-sans">
 
             {/* Header */}
-            <header className="fixed top-0 left-0 w-full h-14 px-6 flex items-center justify-between 
-      bg-white/80 dark:bg-zinc-900/80 backdrop-blur border-b border-zinc-200 dark:border-zinc-800 z-20">
+            <header className="fixed top-0 left-0 w-full h-14 px-6 flex items-center justify-between
+                bg-white/80 dark:bg-zinc-900/80 backdrop-blur border-b border-zinc-200 dark:border-zinc-800 z-20">
 
                 <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-md bg-blue-600/10 flex items-center justify-center">
@@ -166,13 +176,13 @@ export default function Main() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <span className="text-xs text-zinc-600 dark:text-zinc-300 truncate max-w-[120px]">
+                    <span className="text-xs text-zinc-600 dark:text-zinc-300 truncate max-w-[160px]">
                         {session.user?.name || session.user?.email}
                     </span>
                     <button
                         onClick={() => signOut()}
-                        className="px-3 py-1.5 text-xs rounded-md bg-zinc-900 text-white 
-          hover:bg-zinc-700 transition"
+                        className="px-3 py-1.5 text-xs rounded-md bg-zinc-900 text-white
+                            hover:bg-zinc-700 dark:bg-zinc-700 dark:hover:bg-zinc-600 transition"
                     >
                         Sign Out
                     </button>
@@ -184,8 +194,8 @@ export default function Main() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
                     {/* Input */}
-                    <section className="bg-white dark:bg-zinc-900 border border-zinc-200 
-          dark:border-zinc-800 rounded-lg shadow-sm p-6 flex flex-col gap-5">
+                    <section className="bg-white dark:bg-zinc-900 border border-zinc-200
+                        dark:border-zinc-800 rounded-lg shadow-sm p-6 flex flex-col gap-5">
 
                         <div className="flex items-center justify-between">
                             <h2 className="text-sm font-semibold text-zinc-800 dark:text-white flex items-center gap-2">
@@ -193,7 +203,7 @@ export default function Main() {
                                 Input
                             </h2>
                             {file && (
-                                <span className="text-xs text-zinc-500 truncate max-w-[120px]">
+                                <span className="text-xs text-zinc-500 truncate max-w-[160px]" title={file.name}>
                                     {file.name}
                                 </span>
                             )}
@@ -211,13 +221,13 @@ export default function Main() {
                                 onClick={handleAnalyze}
                                 disabled={isAnalyzing}
                                 className="w-full py-2.5 text-sm rounded-md bg-blue-600 text-white
-              hover:bg-blue-700 transition flex items-center justify-center gap-2
-              disabled:opacity-50"
+                                    hover:bg-blue-700 transition flex items-center justify-center gap-2
+                                    disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isAnalyzing ? (
                                     <>
                                         <Loader2 className="w-4 h-4 animate-spin" />
-                                        Analyzing
+                                        Analyzing…
                                     </>
                                 ) : (
                                     "Analyze Document"
@@ -227,43 +237,49 @@ export default function Main() {
                     </section>
 
                     {/* Output */}
-                    <section className="bg-white dark:bg-zinc-900 border border-zinc-200 
-          dark:border-zinc-800 rounded-lg shadow-sm p-6 flex flex-col gap-5">
+                    <section className="bg-white dark:bg-zinc-900 border border-zinc-200
+                        dark:border-zinc-800 rounded-lg shadow-sm p-6 flex flex-col gap-5">
 
                         <h2 className="text-sm font-semibold text-zinc-800 dark:text-white flex items-center gap-2">
-                            <FileSearch className="w-4 h-4 text-green-500" />
+                            <FileText className="w-4 h-4 text-green-500" />
                             Output
                         </h2>
 
                         {result ? (
-                            <JsonDisplay data={result} />
+                            <JsonDisplay data={result} onSaved={fetchHistory} />
                         ) : (
-                            <div className="border border-dashed border-zinc-300 dark:border-zinc-700 
-              rounded-md p-8 text-center text-sm text-zinc-500">
+                            <div className="border border-dashed border-zinc-300 dark:border-zinc-700
+                                rounded-md p-8 text-center text-sm text-zinc-500">
                                 {isAnalyzing
-                                    ? "Processing document..."
+                                    ? "Processing document…"
                                     : "Upload and analyze to see results"}
                             </div>
                         )}
                     </section>
 
                     {/* History */}
-                    <section className="lg:col-span-2 bg-white dark:bg-zinc-900 
-          border border-zinc-200 dark:border-zinc-800 rounded-lg 
-          shadow-sm p-6">
+                    <section className="lg:col-span-2 bg-white dark:bg-zinc-900
+                        border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-sm p-6">
 
-                        <h2 className="text-sm font-semibold text-zinc-800 dark:text-white mb-4">
-                            History
-                        </h2>
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-sm font-semibold text-zinc-800 dark:text-white">
+                                History
+                            </h2>
+                            {history.length > 0 && (
+                                <span className="text-xs text-zinc-400">
+                                    {history.length} record{history.length !== 1 ? "s" : ""}
+                                </span>
+                            )}
+                        </div>
 
                         {loadingHistory ? (
                             <div className="flex items-center gap-2 text-sm text-zinc-500">
                                 <Loader2 className="w-4 h-4 animate-spin" />
-                                Loading...
+                                Loading…
                             </div>
                         ) : history.length === 0 ? (
-                            <div className="border border-dashed border-zinc-300 
-              dark:border-zinc-700 rounded-md p-8 text-center text-sm text-zinc-500">
+                            <div className="border border-dashed border-zinc-300
+                                dark:border-zinc-700 rounded-md p-8 text-center text-sm text-zinc-500">
                                 No scanned documents yet.
                             </div>
                         ) : (
@@ -271,52 +287,55 @@ export default function Main() {
                                 <table className="w-full text-sm">
                                     <thead className="text-left text-xs uppercase text-zinc-500 border-b border-zinc-200 dark:border-zinc-800">
                                         <tr>
-                                            <th>Last</th>
-                                            <th>First</th>
-                                            <th>Middle</th>
-                                            <th>Gender</th>
-                                            <th>Birthdate</th>
-                                            <th>Address</th>
-                                            <th className="py-3">Date</th>
-                                            <th className="text-right">Actions</th>
+                                            <th className="pb-3 pr-4">Last</th>
+                                            <th className="pb-3 pr-4">First</th>
+                                            <th className="pb-3 pr-4">Middle</th>
+                                            <th className="pb-3 pr-4">Gender</th>
+                                            <th className="pb-3 pr-4">Birthdate</th>
+                                            <th className="pb-3 pr-4">Address</th>
+                                            <th className="pb-3 pr-4">Date</th>
+                                            <th className="pb-3 text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {history.map((item) => (
                                             <tr
                                                 key={item._id}
-                                                className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition">
-                                                <td className="py-3 text-xs text-zinc-500">{item.entities?.lastName}</td>
-                                                <td className="py-3 text-xs text-zinc-500">{item.entities?.firstName}</td>
-                                                <td className="py-3 text-xs text-zinc-500">{item.entities?.middleName}</td>
-                                                <td className="py-3 text-xs text-zinc-500">{item.entities?.gender}</td>
-                                                <td className="py-3 text-xs text-zinc-500">{item.entities?.birthdate}</td>
-                                                <td className="py-3 text-xs text-zinc-500">{item.entities?.address}</td>
-                                                <td className="py-3 text-xs text-zinc-500">
+                                                className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition">
+                                                <td className="py-3 pr-4 text-xs text-zinc-700 dark:text-zinc-300">{item.entities?.lastName || "—"}</td>
+                                                <td className="py-3 pr-4 text-xs text-zinc-700 dark:text-zinc-300">{item.entities?.firstName || "—"}</td>
+                                                <td className="py-3 pr-4 text-xs text-zinc-700 dark:text-zinc-300">{item.entities?.middleName || "—"}</td>
+                                                <td className="py-3 pr-4 text-xs text-zinc-700 dark:text-zinc-300">{item.entities?.gender || "—"}</td>
+                                                <td className="py-3 pr-4 text-xs text-zinc-700 dark:text-zinc-300">{item.entities?.birthdate || "—"}</td>
+                                                <td className="py-3 pr-4 text-xs text-zinc-700 dark:text-zinc-300 max-w-[160px] truncate" title={item.entities?.address}>
+                                                    {item.entities?.address || "—"}
+                                                </td>
+                                                <td className="py-3 pr-4 text-xs text-zinc-400 whitespace-nowrap">
                                                     {new Date(item.createdAt).toLocaleString()}
                                                 </td>
                                                 <td className="py-3 text-right">
-                                                    <div className="inline-flex items-center gap-2">
-                                                        {/* <button
-                                                            onClick={() => handleEdit(item)}
-                                                            className="text-zinc-600 hover:text-blue-600 p-1"
+                                                    <div className="inline-flex items-center gap-1">
+                                                        <button
+                                                            onClick={() => setEditItem(item)}
+                                                            className="p-1.5 rounded-md text-zinc-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition"
                                                             title="Edit"
                                                         >
                                                             <Edit className="w-4 h-4" />
-                                                        </button> */}
-
+                                                        </button>
                                                         <button
                                                             onClick={() => handleSendEmail(item._id)}
-                                                            className="text-zinc-600 hover:text-green-600 p-1"
-                                                            title="Send email"
-                                                            disabled={!!actionLoading[item._id]}
+                                                            className="p-1.5 rounded-md text-zinc-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                                            title={item.entities?.emails?.length ? "Send email" : "No email on record"}
+                                                            disabled={!!actionLoading[item._id] || !item.entities?.emails?.length}
                                                         >
-                                                            <Mail className="w-4 h-4" />
+                                                            {actionLoading[item._id]
+                                                                ? <Loader2 className="w-4 h-4 animate-spin" />
+                                                                : <Mail className="w-4 h-4" />
+                                                            }
                                                         </button>
-
                                                         <button
                                                             onClick={() => handleDelete(item._id)}
-                                                            className="text-zinc-600 hover:text-red-600 p-1"
+                                                            className="p-1.5 rounded-md text-zinc-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition disabled:opacity-40 disabled:cursor-not-allowed"
                                                             title="Delete"
                                                             disabled={!!actionLoading[item._id]}
                                                         >
@@ -333,7 +352,12 @@ export default function Main() {
                     </section>
                 </div>
             </main>
+
+            <EditDrawer
+                item={editItem}
+                onClose={() => setEditItem(null)}
+                onSaved={handleEditSaved}
+            />
         </div>
     );
-
-}  
+}

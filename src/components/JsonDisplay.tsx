@@ -55,6 +55,7 @@ interface DataShape {
 
 interface JsonDisplayProps {
   data: DataShape;
+  onSaved?: () => void;
 }
 
 const syntaxHighlight = (json: string): string => {
@@ -74,7 +75,7 @@ const syntaxHighlight = (json: string): string => {
   );
 };
 
-const JsonDisplay = ({ data }: JsonDisplayProps) => {
+const JsonDisplay = ({ data, onSaved }: JsonDisplayProps) => {
   const [copied, setCopied] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -145,6 +146,7 @@ const JsonDisplay = ({ data }: JsonDisplayProps) => {
       }
       setSaved(true);
       toast({ title: "Saved to MongoDB", description: "Document data stored successfully." });
+      onSaved?.();
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
       toast({
