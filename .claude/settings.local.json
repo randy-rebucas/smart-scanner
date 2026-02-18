@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"Get-Content ''c:\\\\Users\\\\corew\\\\smart-scanner\\\\.env.local'' | ForEach-Object { if \\($_-match ''^\\([^=]+\\)=''\\) { $matches[1] + ''=***'' } else { $_} }\")",
+      "Bash(powershell -Command:*)"
+    ]
+  }
+}

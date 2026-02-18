@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
         if (!doc) return NextResponse.json({ error: "Document not found" }, { status: 404 });
 
         // Determine recipient
-        const to = session.user.email;
+        // const to = session.user.email;
+        const to = doc.entities?.emails?.[0] || session.user.email; // Send to first extracted email if available, otherwise fallback to user's email
 
         // Require SMTP config
         const host = process.env.SMTP_HOST;
