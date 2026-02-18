@@ -3,7 +3,7 @@ import { useSession, signOut } from "next-auth/react";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import DropZone from "./DropZone";
-import { FileSearch, Loader2 } from "lucide-react";
+import { FileSearch, Loader2, Trash2, Edit, Mail } from "lucide-react";
 import { useToast } from "./ToastProvider";
 import JsonDisplay from "./JsonDisplay";
 
@@ -16,6 +16,7 @@ export default function Main() {
     const { toast } = useToast();
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(false);
+    const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         if (status === "authenticated") {
@@ -29,7 +30,7 @@ export default function Main() {
                 .finally(() => setLoadingHistory(false));
         }
     }, [status]);
-    
+
     const handleFileSelect = useCallback((f: File) => {
         setFile(f);
         setResult(null);
@@ -80,6 +81,52 @@ export default function Main() {
         }
     };
 
+    const handleDelete = async (id: string) => {
+        if (!confirm("Delete this record?")) return;
+        setActionLoading((s) => ({ ...s, [id]: true }));
+        try {
+            const resp = await fetch(`/api/save-scanned-data`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id }),
+            });
+            if (!resp.ok) throw new Error("Failed to delete");
+            setHistory((h) => h.filter((it) => it._id !== id));
+            toast({ title: "Deleted", description: "Record removed." });
+        } catch (e) {
+            toast({ title: "Delete failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+        } finally {
+            setActionLoading((s) => ({ ...s, [id]: false }));
+        }
+    };
+
+    const handleEdit = (item: any) => {
+        // load item into Output for quick edit/view
+        setResult(item);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        toast({ title: "Loaded", description: "Record loaded into Output for editing." });
+    };
+
+    const handleSendEmail = async (id: string) => {
+        setActionLoading((s) => ({ ...s, [id]: true }));
+        try {
+            const resp = await fetch(`/api/save-scanned-data/send-email`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id }),
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error(err.error || "Failed to send email");
+            }
+            toast({ title: "Email sent", description: "Record sent to your email." });
+        } catch (e) {
+            toast({ title: "Send failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+        } finally {
+            setActionLoading((s) => ({ ...s, [id]: false }));
+        }
+    };
+
     if (status === "loading") {
         return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
     }
@@ -95,72 +142,74 @@ export default function Main() {
     }
 
     return (
-        <div className="min-h-screen w-full flex flex-col bg-gradient-to-br from-blue-50 to-zinc-100 dark:from-zinc-900 dark:to-black font-sans">
-            <header className="w-full px-2 sm:px-6 py-3 flex items-center justify-between bg-white/90 dark:bg-zinc-900/90 shadow-sm fixed top-0 left-0 z-20 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800">
+        <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 font-sans">
+
+            {/* Header */}
+            <header className="fixed top-0 left-0 w-full h-14 px-6 flex items-center justify-between 
+      bg-white/80 dark:bg-zinc-900/80 backdrop-blur border-b border-zinc-200 dark:border-zinc-800 z-20">
+
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                        <FileSearch className="w-6 h-6 text-blue-600 dark:text-blue-300" />
+                    <div className="w-8 h-8 rounded-md bg-blue-600/10 flex items-center justify-center">
+                        <FileSearch className="w-4 h-4 text-blue-600" />
                     </div>
-                    <div className="leading-tight">
-                        <h1 className="text-lg font-bold tracking-tight text-zinc-900 dark:text-zinc-50">DocScan <span className="text-blue-600 dark:text-blue-400">AI</span></h1>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Extract structured data from any document image</p>
-                    </div>
+                    <h1 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-white">
+                        DocScan <span className="text-blue-600">AI</span>
+                    </h1>
                 </div>
+
                 <div className="flex items-center gap-3">
-                    {session.user?.image ? (
-                        <Image
-                            src={session.user.image}
-                            alt="User avatar"
-                            width={36}
-                            height={36}
-                            className="rounded-full border border-blue-400 dark:border-blue-500 shadow-sm object-cover"
-                        />
-                    ) : (
-                        <div className="w-9 h-9 rounded-full bg-blue-200 dark:bg-blue-800 flex items-center justify-center text-base font-bold text-blue-700 dark:text-blue-200">
-                            {session.user?.name?.[0] || session.user?.email?.[0] || "U"}
-                        </div>
-                    )}
-                    <span className="font-semibold text-zinc-800 dark:text-zinc-100 text-sm max-w-[120px] truncate">{session.user?.name || session.user?.email || "User"}</span>
+                    <span className="text-xs text-zinc-600 dark:text-zinc-300 truncate max-w-[120px]">
+                        {session.user?.name || session.user?.email}
+                    </span>
                     <button
                         onClick={() => signOut()}
-                        className="px-3 py-1 rounded-full bg-red-600 text-white font-semibold shadow-sm hover:bg-red-700 transition-colors text-xs focus:outline-none focus:ring-2 focus:ring-red-400"
-                        title="Sign out"
+                        className="px-3 py-1.5 text-xs rounded-md bg-zinc-900 text-white 
+          hover:bg-zinc-700 transition"
                     >
                         Sign Out
                     </button>
                 </div>
             </header>
 
-            <main className="max-w-5xl mx-auto px-2 sm:px-6 py-8 sm:py-12 mt-10">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Input Card */}
-                    <section className="bg-white/90 dark:bg-zinc-900/90 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 p-6 flex flex-col gap-6 min-h-[350px]">
-                        <div className="flex items-center justify-between mb-2">
-                            <h2 className="text-base font-semibold text-zinc-800 dark:text-zinc-100 tracking-tight flex items-center gap-2">
+            {/* Main */}
+            <main className="pt-20 px-6 pb-10 max-w-7xl mx-auto">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                    {/* Input */}
+                    <section className="bg-white dark:bg-zinc-900 border border-zinc-200 
+          dark:border-zinc-800 rounded-lg shadow-sm p-6 flex flex-col gap-5">
+
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-sm font-semibold text-zinc-800 dark:text-white flex items-center gap-2">
                                 <FileSearch className="w-4 h-4 text-blue-500" />
                                 Input
                             </h2>
                             {file && (
-                                <span className="text-xs text-zinc-500 font-mono truncate max-w-[120px]">{file.name}</span>
+                                <span className="text-xs text-zinc-500 truncate max-w-[120px]">
+                                    {file.name}
+                                </span>
                             )}
                         </div>
+
                         <DropZone
                             onFileSelect={handleFileSelect}
                             preview={preview}
                             onClear={handleClear}
                             isAnalyzing={isAnalyzing}
                         />
+
                         {file && (
                             <button
                                 onClick={handleAnalyze}
                                 disabled={isAnalyzing}
-                                className="w-full py-3 rounded-lg bg-blue-600 text-white font-semibold text-base shadow-md hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                                style={{ boxShadow: isAnalyzing ? "none" : "var(--glow-primary)" }}
+                                className="w-full py-2.5 text-sm rounded-md bg-blue-600 text-white
+              hover:bg-blue-700 transition flex items-center justify-center gap-2
+              disabled:opacity-50"
                             >
                                 {isAnalyzing ? (
                                     <>
                                         <Loader2 className="w-4 h-4 animate-spin" />
-                                        Analyzing…
+                                        Analyzing
                                     </>
                                 ) : (
                                     "Analyze Document"
@@ -168,93 +217,110 @@ export default function Main() {
                             </button>
                         )}
                     </section>
-                    {/* Output Card */}
-                    <section className="bg-white/90 dark:bg-zinc-900/90 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 p-6 flex flex-col gap-6 min-h-[350px]">
-                        <div className="flex items-center gap-2 mb-2">
-                            <h2 className="text-base font-semibold text-zinc-800 dark:text-zinc-100 tracking-tight flex items-center gap-2">
-                                <FileSearch className="w-4 h-4 text-green-500" />
-                                Output
-                            </h2>
-                        </div>
+
+                    {/* Output */}
+                    <section className="bg-white dark:bg-zinc-900 border border-zinc-200 
+          dark:border-zinc-800 rounded-lg shadow-sm p-6 flex flex-col gap-5">
+
+                        <h2 className="text-sm font-semibold text-zinc-800 dark:text-white flex items-center gap-2">
+                            <FileSearch className="w-4 h-4 text-green-500" />
+                            Output
+                        </h2>
+
                         {result ? (
                             <JsonDisplay data={result} />
                         ) : (
-                            <div className="rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 p-10 flex flex-col items-center justify-center gap-3 bg-zinc-50/60 dark:bg-zinc-800/40">
-                                <div className="w-10 h-10 rounded-lg bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center">
-                                    <FileSearch className="w-5 h-5 text-zinc-400 dark:text-zinc-500" />
-                                </div>
-                                <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center">
-                                    {isAnalyzing
-                                        ? "Processing document…"
-                                        : "Upload an image and click analyze to see results"}
-                                </p>
+                            <div className="border border-dashed border-zinc-300 dark:border-zinc-700 
+              rounded-md p-8 text-center text-sm text-zinc-500">
+                                {isAnalyzing
+                                    ? "Processing document..."
+                                    : "Upload and analyze to see results"}
                             </div>
                         )}
                     </section>
-                    {/* Future feature: History of scanned documents */}
-                    {/* History Section */}
-                    <section className="lg:col-span-2 bg-white/90 dark:bg-zinc-900/90 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 p-6 flex flex-col gap-6">
-                        <div className="flex items-center gap-2 mb-2">
-                            <h2 className="text-base font-semibold text-zinc-800 dark:text-zinc-100 tracking-tight flex items-center gap-2">
-                                <FileSearch className="w-4 h-4 text-purple-500" />
-                                History
-                            </h2>
-                        </div>
+
+                    {/* History */}
+                    <section className="lg:col-span-2 bg-white dark:bg-zinc-900 
+          border border-zinc-200 dark:border-zinc-800 rounded-lg 
+          shadow-sm p-6">
+
+                        <h2 className="text-sm font-semibold text-zinc-800 dark:text-white mb-4">
+                            History
+                        </h2>
+
                         {loadingHistory ? (
-                            <div className="flex justify-center items-center py-10">
-                                <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
-                                <span className="ml-2 text-zinc-500">Loading history…</span>
+                            <div className="flex items-center gap-2 text-sm text-zinc-500">
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Loading...
                             </div>
                         ) : history.length === 0 ? (
-                            <div className="rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 p-10 flex flex-col items-center justify-center gap-3 bg-zinc-50/60 dark:bg-zinc-800/40">
-                                <div className="w-10 h-10 rounded-lg bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center">
-                                    <FileSearch className="w-5 h-5 text-zinc-400 dark:text-zinc-500" />
-                                </div>
-                                <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center">
-                                    No scanned documents yet.
-                                </p>
+                            <div className="border border-dashed border-zinc-300 
+              dark:border-zinc-700 rounded-md p-8 text-center text-sm text-zinc-500">
+                                No scanned documents yet.
                             </div>
                         ) : (
-                            <div className="overflow-x-auto max-h-96">
-                                <table className="min-w-full text-xs border-collapse">
-                                    <thead>
-                                        <tr className="bg-zinc-100 dark:bg-zinc-800">
-                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">Date</th>
-                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">User</th>
-                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">Last Name</th>
-                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">First Name</th>
-                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">Middle Name</th>
-                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">Gender</th>
-                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">Birthdate</th>
-                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">Address</th>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="text-left text-xs uppercase text-zinc-500 border-b border-zinc-200 dark:border-zinc-800">
+                                        <tr>
+                                            <th className="py-3">Date</th>
+                                            <th>User</th>
+                                            <th>Last</th>
+                                            <th>First</th>
+                                            <th>Middle</th>
+                                            <th>Gender</th>
+                                            <th>Birthdate</th>
+                                            <th>Address</th>
+                                            <th className="text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {history.map((item) => (
-                                            <tr key={item._id} className="bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800">
-                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
+                                            <tr
+                                                key={item._id}
+                                                className="border-b border-zinc-100 dark:border-zinc-800 
+                      hover:bg-zinc-50 dark:hover:bg-zinc-800 transition"
+                                            >
+                                                <td className="py-3 text-xs text-zinc-500">
                                                     {new Date(item.createdAt).toLocaleString()}
                                                 </td>
-                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 font-mono truncate max-w-[120px]">
+                                                <td className="truncate max-w-[120px]">
                                                     {item.user}
                                                 </td>
-                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
-                                                    {item.entities?.lastName || ""}
-                                                </td>
-                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
-                                                    {item.entities?.firstName || ""}
-                                                </td>
-                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
-                                                    {item.entities?.middleName || ""}
-                                                </td>
-                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
-                                                    {item.entities?.gender || ""}
-                                                </td>
-                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
-                                                    {item.entities?.birthdate || ""}
-                                                </td>
-                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
-                                                    {item.entities?.address || ""}
+                                                <td>{item.entities?.lastName}</td>
+                                                <td>{item.entities?.firstName}</td>
+                                                <td>{item.entities?.middleName}</td>
+                                                <td>{item.entities?.gender}</td>
+                                                <td>{item.entities?.birthdate}</td>
+                                                <td>{item.entities?.address}</td>
+                                                <td className="py-3 text-right">
+                                                    <div className="inline-flex items-center gap-2">
+                                                        {/* <button
+                                                            onClick={() => handleEdit(item)}
+                                                            className="text-zinc-600 hover:text-blue-600 p-1"
+                                                            title="Edit"
+                                                        >
+                                                            <Edit className="w-4 h-4" />
+                                                        </button> */}
+
+                                                        <button
+                                                            onClick={() => handleSendEmail(item._id)}
+                                                            className="text-zinc-600 hover:text-green-600 p-1"
+                                                            title="Send email"
+                                                            disabled={!!actionLoading[item._id]}
+                                                        >
+                                                            <Mail className="w-4 h-4" />
+                                                        </button>
+
+                                                        <button
+                                                            onClick={() => handleDelete(item._id)}
+                                                            className="text-zinc-600 hover:text-red-600 p-1"
+                                                            title="Delete"
+                                                            disabled={!!actionLoading[item._id]}
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))}
@@ -267,4 +333,5 @@ export default function Main() {
             </main>
         </div>
     );
+
 }  
