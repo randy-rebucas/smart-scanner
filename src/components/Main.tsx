@@ -215,23 +215,51 @@ export default function Main() {
                                 </p>
                             </div>
                         ) : (
-                            <div className="flex flex-col gap-4 max-h-96 overflow-y-auto">
-                                {history.map((item) => (
-                                    <div
-                                        key={item._id}
-                                        className="rounded-lg border border-zinc-200 dark:border-zinc-700 p-4 bg-zinc-50/80 dark:bg-zinc-800/40"
-                                    >
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                                                {new Date(item.createdAt).toLocaleString()}
-                                            </span>
-                                            <span className="text-xs text-zinc-600 dark:text-zinc-300 font-mono truncate max-w-[120px]">
-                                                {item.user}
-                                            </span>
-                                        </div>
-                                        {/* <JsonDisplay data={item.data} /> */}
-                                    </div>
-                                ))}
+                            <div className="overflow-x-auto max-h-96">
+                                <table className="min-w-full text-xs border-collapse">
+                                    <thead>
+                                        <tr className="bg-zinc-100 dark:bg-zinc-800">
+                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">Date</th>
+                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">User</th>
+                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">Last Name</th>
+                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">First Name</th>
+                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">Middle Name</th>
+                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">Gender</th>
+                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">Birthdate</th>
+                                            <th className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 text-left">Address</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {history.map((item) => (
+                                            <tr key={item._id} className="bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800">
+                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
+                                                    {new Date(item.createdAt).toLocaleString()}
+                                                </td>
+                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700 font-mono truncate max-w-[120px]">
+                                                    {item.user}
+                                                </td>
+                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
+                                                    {item.entities?.lastName || ""}
+                                                </td>
+                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
+                                                    {item.entities?.firstName || ""}
+                                                </td>
+                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
+                                                    {item.entities?.middleName || ""}
+                                                </td>
+                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
+                                                    {item.entities?.gender || ""}
+                                                </td>
+                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
+                                                    {item.entities?.birthdate || ""}
+                                                </td>
+                                                <td className="px-2 py-2 border-b border-zinc-200 dark:border-zinc-700">
+                                                    {item.entities?.address || ""}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         )}
                     </section>

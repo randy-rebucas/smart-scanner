@@ -2,10 +2,59 @@
 
 import { Copy, Check, Database, Loader2 } from "lucide-react";
 import { useState } from "react";
+
 import { useToast } from "./ToastProvider";
+import FormatedData from "@/models/FormatedData";
+
+interface Metadata {
+  detectedLanguage?: string;
+  imageQuality?: string;
+}
+
+interface Entities {
+  personNames?: string[];
+  companyNames?: string[];
+  emails?: string[];
+  phoneNumbers?: string[];
+  addresses?: string[];
+  lastName?: string;
+  firstName?: string;
+  middleName?: string;
+  gender?: string;
+  birthdate?: string;
+  address?: string;
+}
+
+interface FinancialData {
+  invoiceNumber?: string;
+  receiptNumber?: string;
+  date?: string;
+  dueDate?: string;
+  subtotal?: number | null;
+  tax?: number | null;
+  total?: number | null;
+  currency?: string;
+}
+
+interface Item {
+  description?: string;
+  quantity?: number | null;
+  unitPrice?: number | null;
+  total?: number | null;
+}
+
+interface DataShape {
+  documentType?: string;
+  confidenceScore?: number;
+  metadata?: Metadata;
+  entities?: Entities;
+  financialData?: FinancialData;
+  items?: Item[];
+  rawText?: string;
+}
 
 interface JsonDisplayProps {
-  data: Record<string, unknown>;
+  data: DataShape;
 }
 
 const syntaxHighlight = (json: string): string => {
@@ -41,15 +90,55 @@ const JsonDisplay = ({ data }: JsonDisplayProps) => {
   const handleSaveToMongo = async () => {
     setIsSaving(true);
     try {
-      const resp = await fetch(`api/save-scanned-data`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ data }),
-        }
-      );
+      // Format the data using the FormatedData model shape
+      // (Client-side: just ensure the shape matches, server will validate)
+      const formatted = {
+        documentType: data.documentType || "",
+        confidenceScore: data.confidenceScore || 0,
+        metadata: {
+          detectedLanguage: data.metadata?.detectedLanguage || "",
+          imageQuality: data.metadata?.imageQuality || "",
+        },
+        entities: {
+          personNames: data.entities?.personNames || [],
+          companyNames: data.entities?.companyNames || [],
+          emails: data.entities?.emails || [],
+          phoneNumbers: data.entities?.phoneNumbers || [],
+          addresses: data.entities?.addresses || [],
+          lastName: data.entities?.lastName || "",
+          firstName: data.entities?.firstName || "",
+          middleName: data.entities?.middleName || "",
+          gender: data.entities?.gender || "",
+          birthdate: data.entities?.birthdate || "",
+          address: data.entities?.address || "",
+        },
+        financialData: {
+          invoiceNumber: data.financialData?.invoiceNumber || "",
+          receiptNumber: data.financialData?.receiptNumber || "",
+          date: data.financialData?.date || "",
+          dueDate: data.financialData?.dueDate || "",
+          subtotal: data.financialData?.subtotal ?? null,
+          tax: data.financialData?.tax ?? null,
+          total: data.financialData?.total ?? null,
+          currency: data.financialData?.currency || "",
+        },
+        items: Array.isArray(data.items)
+          ? data.items.map((item: any) => ({
+              description: item.description || "",
+              quantity: item.quantity ?? null,
+              unitPrice: item.unitPrice ?? null,
+              total: item.total ?? null,
+            }))
+          : [],
+        rawText: data.rawText || "",
+      };
+      const resp = await fetch(`api/save-scanned-data`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formatted),
+      });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.error || `Error ${resp.status}`);
