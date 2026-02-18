@@ -2,11 +2,51 @@
 import { useSession, signOut } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import DropZone from "./DropZone";
-import { FileSearch, FileText, Loader2, Trash2, Mail, Edit, ScanLine, Database, ArrowRight } from "lucide-react";
+import {
+    FileSearch, FileText, Loader2, Trash2, Mail, Edit,
+    ScanLine, Database, ArrowRight, Zap, Crown, X, CheckCircle2,
+} from "lucide-react";
 import { useToast } from "./ToastProvider";
 import JsonDisplay from "./JsonDisplay";
 import Link from "next/link";
 import EditDrawer, { EditableItem } from "./EditDrawer";
+
+// ── Subscription types ────────────────────────────────────────────────────────
+
+interface SubscriptionInfo {
+    plan: "trial" | "starter" | "pro";
+    planName: string;
+    scansUsed: number;
+    scansLimit: number;
+    isUnlimited: boolean;
+    pricePhp: number;
+}
+
+const PLAN_FEATURES: Record<string, { icon: React.ReactNode; color: string; features: string[]; pricePhp: number; scanLabel: string }> = {
+    trial: {
+        icon: <ScanLine className="w-4 h-4" />,
+        color: "text-zinc-500",
+        pricePhp: 0,
+        scanLabel: "3 lifetime scans",
+        features: ["3 scans (lifetime)", "Full AI extraction", "Save & export"],
+    },
+    starter: {
+        icon: <Zap className="w-4 h-4" />,
+        color: "text-blue-500",
+        pricePhp: 499,
+        scanLabel: "30 scans / month",
+        features: ["30 scans / month", "Full AI extraction", "Save & export", "Email sharing"],
+    },
+    pro: {
+        icon: <Crown className="w-4 h-4" />,
+        color: "text-amber-500",
+        pricePhp: 1499,
+        scanLabel: "Unlimited scans",
+        features: ["Unlimited scans", "Full AI extraction", "Save & export", "Email sharing", "Priority support"],
+    },
+};
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 export default function Main() {
     const { data: session, status } = useSession();
@@ -19,6 +59,13 @@ export default function Main() {
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
     const [editItem, setEditItem] = useState<EditableItem | null>(null);
+
+    // Subscription state
+    const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
+    const [showUpgrade, setShowUpgrade] = useState(false);
+    const [upgrading, setUpgrading] = useState<string | null>(null); // plan key being upgraded
+
+    // ── Data fetchers ─────────────────────────────────────────────────────────
 
     const fetchHistory = useCallback(async () => {
         setLoadingHistory(true);
@@ -33,11 +80,23 @@ export default function Main() {
         }
     }, []);
 
+    const fetchSubscription = useCallback(async () => {
+        try {
+            const res = await fetch("/api/subscription");
+            if (res.ok) setSubscription(await res.json());
+        } catch {
+            // non-critical — fail silently
+        }
+    }, []);
+
     useEffect(() => {
         if (status === "authenticated") {
             fetchHistory();
+            fetchSubscription();
         }
-    }, [status, fetchHistory]);
+    }, [status, fetchHistory, fetchSubscription]);
+
+    // ── File handlers ─────────────────────────────────────────────────────────
 
     const handleFileSelect = useCallback((f: File) => {
         setFile(f);
@@ -53,6 +112,8 @@ export default function Main() {
         setResult(null);
     };
 
+    // ── Analyze ───────────────────────────────────────────────────────────────
+
     const handleAnalyze = async () => {
         if (!file || !preview) return;
         setIsAnalyzing(true);
@@ -60,19 +121,30 @@ export default function Main() {
 
         try {
             const base64 = preview.split(",")[1];
-            const resp = await fetch(`/api/analyze-document`, {
+            const resp = await fetch("/api/analyze-document", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
             });
 
+            if (resp.status === 403) {
+                // Scan limit reached — show upgrade modal instead of generic error
+                setShowUpgrade(true);
+                return;
+            }
+
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
-                throw new Error(err.error || `Error ${resp.status}`);
+                throw new Error((err as { error?: string }).error || `Error ${resp.status}`);
             }
 
             const data = await resp.json();
             setResult(data);
+
+            // Optimistically update local scan counter
+            setSubscription((s) =>
+                s ? { ...s, scansUsed: s.scansUsed + 1 } : s
+            );
         } catch (e) {
             toast({
                 title: "Analysis failed",
@@ -84,11 +156,41 @@ export default function Main() {
         }
     };
 
+    // ── Upgrade plan — creates a PayMongo checkout session then redirects ─────
+
+    const handleUpgrade = async (plan: "starter" | "pro") => {
+        setUpgrading(plan);
+        try {
+            const resp = await fetch("/api/subscription/checkout", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ plan }),
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                throw new Error((err as { error?: string }).error || "Could not start checkout");
+            }
+            const { url } = await resp.json() as { url: string };
+            // Redirect to PayMongo hosted checkout page
+            window.location.href = url;
+        } catch (e) {
+            toast({
+                title: "Checkout failed",
+                description: e instanceof Error ? e.message : "Unknown error",
+                variant: "destructive",
+            });
+            setUpgrading(null);
+        }
+        // Note: don't clear `upgrading` on success — the page is navigating away
+    };
+
+    // ── History actions ───────────────────────────────────────────────────────
+
     const handleDelete = async (id: string) => {
         if (!confirm("Delete this record?")) return;
         setActionLoading((s) => ({ ...s, [id]: true }));
         try {
-            const resp = await fetch(`/api/save-scanned-data`, {
+            const resp = await fetch("/api/save-scanned-data", {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ id }),
@@ -110,14 +212,14 @@ export default function Main() {
     const handleSendEmail = async (id: string) => {
         setActionLoading((s) => ({ ...s, [id]: true }));
         try {
-            const resp = await fetch(`/api/save-scanned-data/send-email`, {
+            const resp = await fetch("/api/save-scanned-data/send-email", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ id }),
             });
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
-                throw new Error(err.error || "Failed to send email");
+                throw new Error((err as { error?: string }).error || "Failed to send email");
             }
             toast({ title: "Email sent", description: "Record sent to your email." });
         } catch (e) {
@@ -126,6 +228,17 @@ export default function Main() {
             setActionLoading((s) => ({ ...s, [id]: false }));
         }
     };
+
+    // ── Derived subscription UI values ────────────────────────────────────────
+
+    const usagePct = subscription && !subscription.isUnlimited
+        ? Math.min(100, Math.round((subscription.scansUsed / subscription.scansLimit) * 100))
+        : 0;
+    const atLimit = subscription
+        ? !subscription.isUnlimited && subscription.scansUsed >= subscription.scansLimit
+        : false;
+
+    // ── Loading / unauthenticated screens ─────────────────────────────────────
 
     if (status === "loading") {
         return (
@@ -148,10 +261,7 @@ export default function Main() {
             <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950 p-4">
                 <div className="w-full max-w-md">
                     <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
-
-                        {/* Top accent */}
                         <div className="h-1 bg-gradient-to-r from-blue-500 via-blue-600 to-blue-400" />
-
                         <div className="p-8">
                             {/* Brand */}
                             <div className="flex items-center gap-3 mb-7">
@@ -165,7 +275,6 @@ export default function Main() {
                                     </span>
                                 </div>
                             </div>
-
                             {/* Headline */}
                             <div className="mb-7">
                                 <h2 className="text-2xl font-bold text-zinc-900 dark:text-white leading-snug mb-2">
@@ -175,7 +284,6 @@ export default function Main() {
                                     Upload any document and let AI pull out structured data in seconds — names, dates, financials, and more.
                                 </p>
                             </div>
-
                             {/* Features */}
                             <div className="space-y-4 mb-8">
                                 <div className="flex items-start gap-3">
@@ -206,7 +314,6 @@ export default function Main() {
                                     </div>
                                 </div>
                             </div>
-
                             {/* CTA */}
                             <Link
                                 href="/signin"
@@ -215,7 +322,9 @@ export default function Main() {
                                 Get Started — Sign In
                                 <ArrowRight className="w-4 h-4" />
                             </Link>
-                            <p className="text-center text-[11px] text-zinc-400 mt-3">Free to use · No credit card required</p>
+                            <p className="text-center text-[11px] text-zinc-400 mt-3">
+                                Start free · 3 scans included · No credit card required
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -223,10 +332,12 @@ export default function Main() {
         );
     }
 
+    // ── Authenticated app ─────────────────────────────────────────────────────
+
     return (
         <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 font-sans">
 
-            {/* Header */}
+            {/* ── Header ─────────────────────────────────────────────────── */}
             <header className="fixed top-0 left-0 w-full h-14 px-6 flex items-center justify-between
                 bg-white/80 dark:bg-zinc-900/80 backdrop-blur border-b border-zinc-200 dark:border-zinc-800 z-20">
 
@@ -240,7 +351,29 @@ export default function Main() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <span className="text-xs text-zinc-600 dark:text-zinc-300 truncate max-w-[160px]">
+                    {/* Plan badge */}
+                    {subscription && (
+                        <button
+                            onClick={() => setShowUpgrade(true)}
+                            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition
+                                ${subscription.plan === "pro"
+                                    ? "bg-amber-50 text-amber-600 hover:bg-amber-100 dark:bg-amber-900/20 dark:hover:bg-amber-900/40"
+                                    : subscription.plan === "starter"
+                                        ? "bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/40"
+                                        : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700"
+                                }`}
+                        >
+                            {subscription.plan === "pro" && <Crown className="w-3 h-3" />}
+                            {subscription.plan === "starter" && <Zap className="w-3 h-3" />}
+                            {subscription.planName}
+                            {!subscription.isUnlimited && (
+                                <span className="opacity-70">
+                                    · {subscription.scansUsed}/{subscription.scansLimit}
+                                </span>
+                            )}
+                        </button>
+                    )}
+                    <span className="text-xs text-zinc-600 dark:text-zinc-300 truncate max-w-[140px]">
                         {session.user?.name || session.user?.email}
                     </span>
                     <button
@@ -253,11 +386,11 @@ export default function Main() {
                 </div>
             </header>
 
-            {/* Main */}
+            {/* ── Main content ────────────────────────────────────────────── */}
             <main className="pt-20 px-6 pb-10 max-w-7xl mx-auto">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-                    {/* Input */}
+                    {/* Input panel */}
                     <section className="bg-white dark:bg-zinc-900 border border-zinc-200
                         dark:border-zinc-800 rounded-lg shadow-sm p-6 flex flex-col gap-5">
 
@@ -281,26 +414,88 @@ export default function Main() {
                         />
 
                         {file && (
-                            <button
-                                onClick={handleAnalyze}
-                                disabled={isAnalyzing}
-                                className="w-full py-2.5 text-sm rounded-md bg-blue-600 text-white
-                                    hover:bg-blue-700 transition flex items-center justify-center gap-2
-                                    disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {isAnalyzing ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                        Analyzing…
-                                    </>
+                            <div className="flex flex-col gap-2">
+                                {atLimit ? (
+                                    /* Limit-reached state */
+                                    <div className="rounded-md border border-amber-200 dark:border-amber-800
+                                        bg-amber-50 dark:bg-amber-900/20 p-3 flex items-start gap-3">
+                                        <Crown className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                                                {subscription?.plan === "trial"
+                                                    ? "Free trial scans used up"
+                                                    : "Monthly scan limit reached"}
+                                            </p>
+                                            <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                                                {subscription?.plan === "trial"
+                                                    ? "Upgrade to keep scanning — plans start at $9/mo."
+                                                    : "Your limit resets next billing cycle."}
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => setShowUpgrade(true)}
+                                            className="shrink-0 px-3 py-1.5 text-xs rounded-md bg-amber-500
+                                                text-white hover:bg-amber-600 transition font-medium"
+                                        >
+                                            Upgrade
+                                        </button>
+                                    </div>
                                 ) : (
-                                    "Analyze Document"
+                                    <button
+                                        onClick={handleAnalyze}
+                                        disabled={isAnalyzing}
+                                        className="w-full py-2.5 text-sm rounded-md bg-blue-600 text-white
+                                            hover:bg-blue-700 transition flex items-center justify-center gap-2
+                                            disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isAnalyzing ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                Analyzing…
+                                            </>
+                                        ) : (
+                                            "Analyze Document"
+                                        )}
+                                    </button>
                                 )}
-                            </button>
+
+                                {/* Usage meter */}
+                                {subscription && !subscription.isUnlimited && (
+                                    <div className="flex flex-col gap-1">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[11px] text-zinc-400">
+                                                {subscription.scansUsed} / {subscription.scansLimit} scans used
+                                                {subscription.plan === "trial" && " (lifetime)"}
+                                                {subscription.plan !== "trial" && " this month"}
+                                            </span>
+                                            {subscription.plan === "trial" && !atLimit && (
+                                                <button
+                                                    onClick={() => setShowUpgrade(true)}
+                                                    className="text-[11px] text-blue-500 hover:text-blue-600 transition"
+                                                >
+                                                    Upgrade
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="h-1.5 w-full rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+                                            <div
+                                                className={`h-full rounded-full transition-all duration-300
+                                                    ${usagePct >= 100 ? "bg-red-500" : usagePct >= 66 ? "bg-amber-400" : "bg-blue-500"}`}
+                                                style={{ width: `${usagePct}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                                {subscription?.isUnlimited && (
+                                    <p className="text-[11px] text-center text-amber-500 font-medium">
+                                        ∞ Unlimited scans · Pro plan
+                                    </p>
+                                )}
+                            </div>
                         )}
                     </section>
 
-                    {/* Output */}
+                    {/* Output panel */}
                     <section className="bg-white dark:bg-zinc-900 border border-zinc-200
                         dark:border-zinc-800 rounded-lg shadow-sm p-6 flex flex-col gap-5">
 
@@ -422,6 +617,124 @@ export default function Main() {
                 onClose={() => setEditItem(null)}
                 onSaved={handleEditSaved}
             />
+
+            {/* ── Upgrade modal ────────────────────────────────────────────── */}
+            {showUpgrade && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4
+                        bg-black/40 backdrop-blur-sm"
+                    onClick={(e) => { if (e.target === e.currentTarget) setShowUpgrade(false); }}
+                >
+                    <div className="w-full max-w-2xl bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl
+                        border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+
+                        {/* Modal header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800">
+                            <div>
+                                <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">
+                                    Choose your plan
+                                </h3>
+                                <p className="text-xs text-zinc-500 mt-0.5">
+                                    Upgrade to unlock more scans. Cancel anytime.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setShowUpgrade(false)}
+                                className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-600
+                                    hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        {/* Pricing cards */}
+                        <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            {(["trial", "starter", "pro"] as const).map((planKey) => {
+                                const meta = PLAN_FEATURES[planKey];
+                                const isCurrent = subscription?.plan === planKey;
+                                const isProPlan = planKey === "pro";
+                                const isLoading = upgrading === planKey;
+
+                                return (
+                                    <div
+                                        key={planKey}
+                                        className={`relative rounded-xl border p-4 flex flex-col gap-3 transition
+                                            ${isCurrent
+                                                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/10"
+                                                : isProPlan
+                                                    ? "border-amber-300 dark:border-amber-700"
+                                                    : "border-zinc-200 dark:border-zinc-700"
+                                            }`}
+                                    >
+                                        {isProPlan && (
+                                            <span className="absolute -top-2.5 left-1/2 -translate-x-1/2
+                                                text-[10px] font-bold px-2 py-0.5 rounded-full
+                                                bg-amber-400 text-white whitespace-nowrap">
+                                                Most Popular
+                                            </span>
+                                        )}
+
+                                        <div className={`flex items-center gap-2 ${meta.color}`}>
+                                            {meta.icon}
+                                            <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+                                                {planKey === "trial" ? "Free Trial" : planKey === "starter" ? "Starter" : "Pro"}
+                                            </span>
+                                        </div>
+
+                                        <div>
+                                            <span className="text-2xl font-bold text-zinc-900 dark:text-white">
+                                                {meta.pricePhp === 0 ? "Free" : `₱${meta.pricePhp.toLocaleString()}`}
+                                            </span>
+                                            {meta.pricePhp > 0 && (
+                                                <span className="text-xs text-zinc-400"> / mo</span>
+                                            )}
+                                            <p className="text-xs text-zinc-500 mt-0.5">{meta.scanLabel}</p>
+                                        </div>
+
+                                        <ul className="flex flex-col gap-1.5 flex-1">
+                                            {meta.features.map((f) => (
+                                                <li key={f} className="flex items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-400">
+                                                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                                                    {f}
+                                                </li>
+                                            ))}
+                                        </ul>
+
+                                        {isCurrent ? (
+                                            <div className="w-full py-2 text-xs text-center font-medium
+                                                text-blue-600 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                                Current plan
+                                            </div>
+                                        ) : planKey !== "trial" ? (
+                                            <button
+                                                onClick={() => handleUpgrade(planKey)}
+                                                disabled={!!upgrading}
+                                                className={`w-full py-2 text-xs font-medium rounded-lg transition
+                                                    flex items-center justify-center gap-1.5
+                                                    disabled:opacity-50 disabled:cursor-not-allowed
+                                                    ${isProPlan
+                                                        ? "bg-amber-500 text-white hover:bg-amber-600"
+                                                        : "bg-blue-600 text-white hover:bg-blue-700"
+                                                    }`}
+                                            >
+                                                {isLoading ? (
+                                                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Upgrading…</>
+                                                ) : (
+                                                    `Upgrade to ${planKey === "starter" ? "Starter" : "Pro"}`
+                                                )}
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <p className="px-6 pb-4 text-center text-[11px] text-zinc-400">
+                            Secure checkout via PayMongo · GCash, Maya, Card accepted · Scan count resets on upgrade
+                        </p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

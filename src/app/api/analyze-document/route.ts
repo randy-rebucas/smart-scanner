@@ -1,13 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/auth/authOptions";
+import { dbConnect } from "@/lib/mongodb";
+import User from "@/models/User";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// Scans that reset monthly (paid plans). Trial scans are lifetime.
+const MONTHLY_PLANS = new Set(["starter", "pro"]);
+const MS_PER_CYCLE = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export async function POST(req: NextRequest) {
   try {
-    const { imageBase64, mimeType } = await req.json();
+    // ── Auth ────────────────────────────────────────────────────────────────
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
 
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
@@ -15,7 +28,54 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
-    // ...existing code...
+
+    const { imageBase64, mimeType } = await req.json();
+
+    // ── User (upsert handles first-time GitHub OAuth users) ─────────────────
+    await dbConnect();
+    let user = await User.findOneAndUpdate(
+      { email: session.user.email },
+      {
+        $setOnInsert: {
+          email: session.user.email,
+          name: session.user.name || "",
+          plan: "trial",
+          scansUsed: 0,
+          scansLimit: 3,
+        },
+      },
+      { upsert: true, new: true }
+    );
+
+    // ── Monthly billing-cycle reset for paid plans ──────────────────────────
+    if (MONTHLY_PLANS.has(user.plan) && user.billingCycleStart) {
+      const elapsed = Date.now() - new Date(user.billingCycleStart).getTime();
+      if (elapsed >= MS_PER_CYCLE) {
+        user = await User.findOneAndUpdate(
+          { email: session.user.email },
+          { scansUsed: 0, billingCycleStart: new Date() },
+          { new: true }
+        );
+      }
+    }
+
+    // ── Scan-limit enforcement ──────────────────────────────────────────────
+    const limit: number = user!.scansLimit ?? 3;
+    const used: number = user!.scansUsed ?? 0;
+
+    if (limit !== -1 && used >= limit) {
+      return NextResponse.json(
+        {
+          error: "scan_limit_reached",
+          plan: user!.plan,
+          scansUsed: used,
+          scansLimit: limit,
+        },
+        { status: 403 }
+      );
+    }
+
+    // ── OpenAI call ─────────────────────────────────────────────────────────
     const systemPrompt = `
 You are a document analysis AI. Analyze the uploaded image and extract structured data.
 
@@ -75,9 +135,8 @@ Return ONLY valid JSON in this exact structure:
 Only return valid JSON. No markdown, no code fences, no extra text.
 `;
 
-
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Fast + vision capable
+      model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
         {
@@ -85,9 +144,7 @@ Only return valid JSON. No markdown, no code fences, no extra text.
           content: [
             {
               type: "image_url",
-              image_url: {
-                url: `data:${mimeType};base64,${imageBase64}`,
-              },
+              image_url: { url: `data:${mimeType};base64,${imageBase64}` },
             },
             {
               type: "text",
@@ -102,28 +159,26 @@ Only return valid JSON. No markdown, no code fences, no extra text.
     const content = response.choices?.[0]?.message?.content || "";
 
     let parsed;
-
     try {
       const cleaned = content
         .replace(/```json?\n?/g, "")
         .replace(/```\n?/g, "")
         .trim();
-
       parsed = JSON.parse(cleaned);
     } catch {
-      parsed = {
-        rawText: content,
-        error: "Failed to parse structured data",
-      };
+      parsed = { rawText: content, error: "Failed to parse structured data" };
     }
 
-    return NextResponse.json(parsed);
-  } catch (error: any) {
-    console.error("analyze-document error:", error);
-
-    return NextResponse.json(
-      { error: error.message || "Unknown error" },
-      { status: 500 }
+    // ── Increment scan count on success ─────────────────────────────────────
+    await User.updateOne(
+      { email: session.user.email },
+      { $inc: { scansUsed: 1 } }
     );
+
+    return NextResponse.json(parsed);
+  } catch (error: unknown) {
+    console.error("analyze-document error:", error);
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
