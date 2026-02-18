@@ -2,7 +2,7 @@
 import { useSession, signOut } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import DropZone from "./DropZone";
-import { FileSearch, FileText, Loader2, Trash2, Mail, Edit } from "lucide-react";
+import { FileSearch, FileText, Loader2, Trash2, Mail, Edit, ScanLine, Database, ArrowRight } from "lucide-react";
 import { useToast } from "./ToastProvider";
 import JsonDisplay from "./JsonDisplay";
 import Link from "next/link";
@@ -130,30 +130,94 @@ export default function Main() {
     if (status === "loading") {
         return (
             <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950">
-                <Loader2 className="w-6 h-6 animate-spin text-zinc-400" />
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg">
+                        <FileSearch className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-zinc-400">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Loading…
+                    </div>
+                </div>
             </div>
         );
     }
 
     if (!session) {
         return (
-            <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-black">
-                <div className="bg-white dark:bg-zinc-900 shadow-lg p-8 rounded-lg flex flex-col items-center gap-4 w-full max-w-sm">
-                    <div className="w-10 h-10 rounded-md bg-blue-600/10 flex items-center justify-center">
-                        <FileSearch className="w-5 h-5 text-blue-600" />
+            <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950 p-4">
+                <div className="w-full max-w-md">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+
+                        {/* Top accent */}
+                        <div className="h-1 bg-gradient-to-r from-blue-500 via-blue-600 to-blue-400" />
+
+                        <div className="p-8">
+                            {/* Brand */}
+                            <div className="flex items-center gap-3 mb-7">
+                                <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
+                                    <FileSearch className="w-5 h-5 text-white" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-bold tracking-tight text-zinc-900 dark:text-white">DocScan AI</p>
+                                    <span className="text-[10px] font-medium text-blue-600 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded-full">
+                                        Powered by AI + OCR
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Headline */}
+                            <div className="mb-7">
+                                <h2 className="text-2xl font-bold text-zinc-900 dark:text-white leading-snug mb-2">
+                                    Scan documents.<br />Extract data instantly.
+                                </h2>
+                                <p className="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                                    Upload any document and let AI pull out structured data in seconds — names, dates, financials, and more.
+                                </p>
+                            </div>
+
+                            {/* Features */}
+                            <div className="space-y-4 mb-8">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center shrink-0">
+                                        <ScanLine className="w-4 h-4 text-blue-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">OCR + AI Extraction</p>
+                                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Reads IDs, invoices, receipts, contracts, and more with high accuracy.</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-green-50 dark:bg-green-900/20 flex items-center justify-center shrink-0">
+                                        <Database className="w-4 h-4 text-green-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Structured & Saved</p>
+                                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Every scan is stored to your account — searchable, editable, always there.</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center shrink-0">
+                                        <Mail className="w-4 h-4 text-purple-600" />
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Share via Email</p>
+                                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Send extracted data directly to any email address in one click.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* CTA */}
+                            <Link
+                                href="/signin"
+                                className="w-full py-3 text-sm font-medium bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                            >
+                                Get Started — Sign In
+                                <ArrowRight className="w-4 h-4" />
+                            </Link>
+                            <p className="text-center text-[11px] text-zinc-400 mt-3">Free to use · No credit card required</p>
+                        </div>
                     </div>
-                    <div className="text-center">
-                        <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Smart Scanner</h2>
-                        <p className="text-sm mt-1 text-zinc-500 dark:text-zinc-400">
-                            Sign in to scan and extract data from documents.
-                        </p>
-                    </div>
-                    <Link
-                        href="/signin"
-                        className="w-full py-2.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center justify-center"
-                    >
-                        Sign In
-                    </Link>
                 </div>
             </div>
         );
