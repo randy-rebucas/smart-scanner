@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import DropZone from "./DropZone";
 import {
     FileSearch, FileText, Loader2, Trash2, Mail, Edit,
-    ScanLine, Database, ArrowRight, Zap, Crown, X, CheckCircle2,
+    ScanLine, Database, ArrowRight, Zap, Crown, X, CheckCircle2, Facebook, Linkedin,
 } from "lucide-react";
+
 import { useToast } from "./ToastProvider";
 import JsonDisplay from "./JsonDisplay";
 import Link from "next/link";
@@ -612,6 +613,22 @@ export default function Main() {
                 </div>
             </main>
 
+            {/* ── Footer ─────────────────────────────────────────────────── */}
+            <footer className="text-center text-xs text-zinc-400 py-6">
+                <div>&copy; {new Date().getFullYear()} DocScan AI. All rights reserved.</div>
+                <div className="mt-2">Powered by <a href="#" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">DevCom Digital Marketing Services</a></div>
+                <div className="mt-2 flex items-center justify-center gap-4">
+                    <a href="https://www.facebook.com/DevComDMS" aria-label="DevCom on Facebook" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-zinc-400 hover:text-blue-600">
+                        <Facebook className="w-4 h-4" />
+                        <span className="text-xs">Facebook</span>
+                    </a>
+                    <a href="https://www.linkedin.com/company/devcom-digital-marketing-services" aria-label="DevCom on LinkedIn" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-zinc-400 hover:text-blue-700">
+                        <Linkedin className="w-4 h-4" />
+                        <span className="text-xs">LinkedIn</span>
+                    </a>
+                </div>
+            </footer>
+            
             <EditDrawer
                 item={editItem}
                 onClose={() => setEditItem(null)}
