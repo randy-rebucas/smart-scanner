@@ -271,14 +271,13 @@ export default function Main() {
                                 <table className="w-full text-sm">
                                     <thead className="text-left text-xs uppercase text-zinc-500 border-b border-zinc-200 dark:border-zinc-800">
                                         <tr>
-                                            <th className="py-3">Date</th>
-                                            <th>User</th>
                                             <th>Last</th>
                                             <th>First</th>
                                             <th>Middle</th>
                                             <th>Gender</th>
                                             <th>Birthdate</th>
                                             <th>Address</th>
+                                            <th className="py-3">Date</th>
                                             <th className="text-right">Actions</th>
                                         </tr>
                                     </thead>
@@ -286,21 +285,16 @@ export default function Main() {
                                         {history.map((item) => (
                                             <tr
                                                 key={item._id}
-                                                className="border-b border-zinc-100 dark:border-zinc-800 
-                      hover:bg-zinc-50 dark:hover:bg-zinc-800 transition"
-                                            >
+                                                className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition">
+                                                <td className="py-3 text-xs text-zinc-500">{item.entities?.lastName}</td>
+                                                <td className="py-3 text-xs text-zinc-500">{item.entities?.firstName}</td>
+                                                <td className="py-3 text-xs text-zinc-500">{item.entities?.middleName}</td>
+                                                <td className="py-3 text-xs text-zinc-500">{item.entities?.gender}</td>
+                                                <td className="py-3 text-xs text-zinc-500">{item.entities?.birthdate}</td>
+                                                <td className="py-3 text-xs text-zinc-500">{item.entities?.address}</td>
                                                 <td className="py-3 text-xs text-zinc-500">
                                                     {new Date(item.createdAt).toLocaleString()}
                                                 </td>
-                                                <td className="truncate max-w-[120px]">
-                                                    {item.user}
-                                                </td>
-                                                <td>{item.entities?.lastName}</td>
-                                                <td>{item.entities?.firstName}</td>
-                                                <td>{item.entities?.middleName}</td>
-                                                <td>{item.entities?.gender}</td>
-                                                <td>{item.entities?.birthdate}</td>
-                                                <td>{item.entities?.address}</td>
                                                 <td className="py-3 text-right">
                                                     <div className="inline-flex items-center gap-2">
                                                         {/* <button
