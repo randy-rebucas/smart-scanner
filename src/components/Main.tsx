@@ -1,11 +1,11 @@
 "use client";
-import { useSession, signOut } from "next-auth/react";
-import Image from "next/image";
+import { useSession, signOut, signIn } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import DropZone from "./DropZone";
 import { FileSearch, Loader2, Trash2, Edit, Mail } from "lucide-react";
 import { useToast } from "./ToastProvider";
 import JsonDisplay from "./JsonDisplay";
+import Link from "next/link";
 
 export default function Main() {
     const { data: session, status } = useSession();
@@ -133,9 +133,17 @@ export default function Main() {
     if (!session) {
         return (
             <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-                <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-lg p-8 flex flex-col items-center">
-                    <h2 className="text-2xl font-semibold mb-4 text-black dark:text-zinc-50">Welcome to Smart Scanner</h2>
-                    <p className="mb-6 text-zinc-600 dark:text-zinc-300">Sign in to access your dashboard and features.</p>
+                <div className="bg-white dark:bg-zinc-900 shadow-lg p-8 flex flex-col items-center gap-4 w-full max-w-md">
+                    <h2 className="text-2xl font-semibold mb-0 text-black dark:text-zinc-50">Welcome to Smart Scanner</h2>
+                    <p className="text-sm mb-4 text-zinc-600 dark:text-zinc-300">Sign in to access your dashboard and features.</p>
+                            <div className="w-full flex gap-3">
+                                <Link
+                                    href="/signin"
+                                    className="flex-1 py-2.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center justify-center gap-2 text-center"
+                                >
+                                    Sign In
+                                </Link>
+                            </div>
                 </div>
             </div>
         );
