@@ -1,7 +1,7 @@
 "use client";
 import { useSession, signOut } from "next-auth/react";
 import Image from "next/image";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import DropZone from "./DropZone";
 import { FileSearch, Loader2 } from "lucide-react";
 import { useToast } from "./ToastProvider";
@@ -14,7 +14,22 @@ export default function Main() {
     const [result, setResult] = useState<Record<string, unknown> | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const { toast } = useToast();
+    const [history, setHistory] = useState<any[]>([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
 
+    useEffect(() => {
+        if (status === "authenticated") {
+            setLoadingHistory(true);
+            fetch("/api/save-scanned-data")
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) setHistory(data.data);
+                })
+                .catch(() => setHistory([]))
+                .finally(() => setLoadingHistory(false));
+        }
+    }, [status]);
+    
     const handleFileSelect = useCallback((f: File) => {
         setFile(f);
         setResult(null);
@@ -173,6 +188,50 @@ export default function Main() {
                                         ? "Processing document…"
                                         : "Upload an image and click analyze to see results"}
                                 </p>
+                            </div>
+                        )}
+                    </section>
+                    {/* Future feature: History of scanned documents */}
+                    {/* History Section */}
+                    <section className="lg:col-span-2 bg-white/90 dark:bg-zinc-900/90 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 p-6 flex flex-col gap-6">
+                        <div className="flex items-center gap-2 mb-2">
+                            <h2 className="text-base font-semibold text-zinc-800 dark:text-zinc-100 tracking-tight flex items-center gap-2">
+                                <FileSearch className="w-4 h-4 text-purple-500" />
+                                History
+                            </h2>
+                        </div>
+                        {loadingHistory ? (
+                            <div className="flex justify-center items-center py-10">
+                                <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
+                                <span className="ml-2 text-zinc-500">Loading history…</span>
+                            </div>
+                        ) : history.length === 0 ? (
+                            <div className="rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 p-10 flex flex-col items-center justify-center gap-3 bg-zinc-50/60 dark:bg-zinc-800/40">
+                                <div className="w-10 h-10 rounded-lg bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center">
+                                    <FileSearch className="w-5 h-5 text-zinc-400 dark:text-zinc-500" />
+                                </div>
+                                <p className="text-sm text-zinc-500 dark:text-zinc-400 text-center">
+                                    No scanned documents yet.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-4 max-h-96 overflow-y-auto">
+                                {history.map((item) => (
+                                    <div
+                                        key={item._id}
+                                        className="rounded-lg border border-zinc-200 dark:border-zinc-700 p-4 bg-zinc-50/80 dark:bg-zinc-800/40"
+                                    >
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                                {new Date(item.createdAt).toLocaleString()}
+                                            </span>
+                                            <span className="text-xs text-zinc-600 dark:text-zinc-300 font-mono truncate max-w-[120px]">
+                                                {item.user}
+                                            </span>
+                                        </div>
+                                        {/* <JsonDisplay data={item.data} /> */}
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </section>

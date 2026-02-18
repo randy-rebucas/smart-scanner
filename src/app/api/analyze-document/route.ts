@@ -15,13 +15,21 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
-
+    // ...existing code...
     const systemPrompt = `
 You are a document analysis AI. Analyze the uploaded image and extract structured data.
 
-1. Detect document type (invoice, receipt, ID, form, contract, business card, etc.)
+1. Detect document type (invoice, receipt, ID, form, contract, business card, etc)
 2. Extract all relevant structured fields.
-3. Return ONLY valid JSON in this exact structure:
+3. Always attempt to extract the following personal fields if present, and include them in the "entities" object:
+   - lastName (Surname)
+   - firstName (Given Name)
+   - middleName (Middle Initial)
+   - gender (Sex/Gender)
+   - birthdate (Date of Birth)
+   - address
+
+Return ONLY valid JSON in this exact structure:
 
 {
   "documentType": "",
@@ -35,7 +43,13 @@ You are a document analysis AI. Analyze the uploaded image and extract structure
     "companyNames": [],
     "emails": [],
     "phoneNumbers": [],
-    "addresses": []
+    "addresses": [],
+    "lastName": "",
+    "firstName": "",
+    "middleName": "",
+    "gender": "",
+    "birthdate": "",
+    "address": ""
   },
   "financialData": {
     "invoiceNumber": "",
@@ -60,6 +74,7 @@ You are a document analysis AI. Analyze the uploaded image and extract structure
 
 Only return valid JSON. No markdown, no code fences, no extra text.
 `;
+
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini", // Fast + vision capable

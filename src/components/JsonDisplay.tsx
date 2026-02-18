@@ -41,21 +41,19 @@ const JsonDisplay = ({ data }: JsonDisplayProps) => {
   const handleSaveToMongo = async () => {
     setIsSaving(true);
     try {
-      // const resp = await fetch(
-      //   `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/save-to-mongodb`,
-      //   {
-      //     method: "POST",
-      //     headers: {
-      //       "Content-Type": "application/json",
-      //       Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-      //     },
-      //     body: JSON.stringify({ data }),
-      //   }
-      // );
-      // if (!resp.ok) {
-      //   const err = await resp.json().catch(() => ({}));
-      //   throw new Error(err.error || `Error ${resp.status}`);
-      // }
+      const resp = await fetch(`api/save-scanned-data`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ data }),
+        }
+      );
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || `Error ${resp.status}`);
+      }
       setSaved(true);
       toast({ title: "Saved to MongoDB", description: "Document data stored successfully." });
       setTimeout(() => setSaved(false), 3000);
