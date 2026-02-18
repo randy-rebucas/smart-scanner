@@ -145,7 +145,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 interface EditDrawerProps {
     item: EditableItem | null;
     onClose: () => void;
-    onSaved: (updated: EditableItem) => void;
+    onSaved: () => void;
 }
 
 export default function EditDrawer({ item, onClose, onSaved }: EditDrawerProps) {
@@ -232,7 +232,7 @@ export default function EditDrawer({ item, onClose, onSaved }: EditDrawerProps) 
 
             const data = await resp.json();
             toast({ title: "Saved", description: "Record updated successfully." });
-            onSaved(data.data);
+            onSaved();
             onClose();
         } catch (e) {
             toast({

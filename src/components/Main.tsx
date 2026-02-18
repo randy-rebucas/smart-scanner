@@ -103,9 +103,9 @@ export default function Main() {
         }
     };
 
-    const handleEditSaved = (updated: EditableItem) => {
-        setHistory(h => h.map(it => it._id === updated._id ? updated : it));
-    };
+    const handleEditSaved = useCallback(() => {
+        fetchHistory();
+    }, [fetchHistory]);
 
     const handleSendEmail = async (id: string) => {
         setActionLoading((s) => ({ ...s, [id]: true }));
