@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/auth/authOptions";
 import { dbConnect } from "@/lib/mongodb";
 import User from "@/models/User";
+import { getTemplate, VALID_DOCUMENT_TYPES } from "@/lib/documentTemplates";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -75,70 +76,55 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── OpenAI call ─────────────────────────────────────────────────────────
-    const systemPrompt = `
-You are a document analysis AI. Analyze the uploaded image and extract structured data.
+    // ── Pass 1: detect document type ────────────────────────────────────────
+    const detectionResponse = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a document classifier. Identify the document type from the image.
+Respond with ONLY this JSON (no markdown, no extra text):
+{"documentType": "<type>"}
+Valid types: ${VALID_DOCUMENT_TYPES}`,
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "image_url",
+              image_url: { url: `data:${mimeType};base64,${imageBase64}` },
+            },
+            { type: "text", text: "What type of document is this?" },
+          ],
+        },
+      ],
+      temperature: 0,
+      max_tokens: 30,
+    });
 
-1. Detect document type (invoice, receipt, ID, form, contract, business card, etc)
-2. Extract all relevant structured fields.
-3. Always attempt to extract the following personal fields if present, and include them in the "entities" object:
-   - lastName (Surname)
-   - firstName (Given Name)
-   - middleName (Middle Initial)
-   - gender (Sex/Gender)
-   - birthdate (Date of Birth)
-   - address
+    const detectionRaw = detectionResponse.choices?.[0]?.message?.content || "{}";
+    let detectedType = "other";
+    try {
+      const dt = JSON.parse(detectionRaw.replace(/```json?\n?/g, "").replace(/```\n?/g, "").trim());
+      detectedType = dt.documentType || "other";
+    } catch {
+      // fall back to "other"
+    }
+
+    // ── Pass 2: extract structured data with the matching template ───────────
+    const template = getTemplate(detectedType);
+    const extractionPrompt = `${template.systemPrompt}
 
 Return ONLY valid JSON in this exact structure:
 
-{
-  "documentType": "",
-  "confidenceScore": 0-100,
-  "metadata": {
-    "detectedLanguage": "",
-    "imageQuality": "low | medium | high"
-  },
-  "entities": {
-    "personNames": [],
-    "companyNames": [],
-    "emails": [],
-    "phoneNumbers": [],
-    "addresses": [],
-    "lastName": "",
-    "firstName": "",
-    "middleName": "",
-    "gender": "",
-    "birthdate": "",
-    "address": ""
-  },
-  "financialData": {
-    "invoiceNumber": "",
-    "receiptNumber": "",
-    "date": "",
-    "dueDate": "",
-    "subtotal": null,
-    "tax": null,
-    "total": null,
-    "currency": ""
-  },
-  "items": [
-    {
-      "description": "",
-      "quantity": null,
-      "unitPrice": null,
-      "total": null
-    }
-  ],
-  "rawText": ""
-}
+${JSON.stringify(template.jsonStructure, null, 2)}
 
-Only return valid JSON. No markdown, no code fences, no extra text.
-`;
+Only return valid JSON. No markdown, no code fences, no extra text.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: extractionPrompt },
         {
           role: "user",
           content: [
@@ -148,7 +134,7 @@ Only return valid JSON. No markdown, no code fences, no extra text.
             },
             {
               type: "text",
-              text: "Analyze this document image and extract all structured data as JSON.",
+              text: "Extract all structured data from this document as JSON.",
             },
           ],
         },
